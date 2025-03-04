@@ -106,9 +106,9 @@ with col1:
         for key, value in details_deductions.items():
             st.write(f"- **{key}** : {value:.2f} CHF")
 
-# 📈 **Colonne 2 : Calcul de la Marge & TJM Minimum**
+# 📈 **Colonne 2 : Calcul du TJM Minimum**
 with col2:
-    st.header("📊 Calcul de la Marge & TJM Minimum")
+    st.header("📊 Calcul du TJM Minimum")
 
     # **Entrées utilisateur pour la marge**
     tjm_client = st.number_input("💰 TJM Client (CHF)", min_value=0, value=800)

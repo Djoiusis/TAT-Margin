@@ -120,10 +120,9 @@ with col2:
     # **Bouton de calcul du TJM**
     if st.button("📈 Calculer TJM Minimum"):
         if salaire_brut_annuel > 0:
-            salaire_brut_mensuel = salaire_brut_annuel / 12
-            revenus_mensuels = tjm_client * jours_travailles
-            tjm_minimum = (salaire_brut_mensuel*1.14 / (1 - (marge_minimale / 100))) / jours_travailles  # Ajustement de la marge
-            marge_actuelle = ((revenus_mensuels - salaire_brut_mensuel*1.14) / revenus_mensuels) * 100
+            revenus_annuel = tjm_client * 225
+            tjm_minimum = (salaire_brut_annuel*1.14 / (1 - (marge_minimale / 100))) / 225  # Ajustement de la marge
+            marge_actuelle = ((revenus_annuel - salaire_brut_annuel*1.14) / revenus_annuel) * 100
 
             # **Affichage des résultats**
             st.write(f"### 📉 Marge Actuelle : {marge_actuelle:.2f} %")

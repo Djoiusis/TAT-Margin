@@ -77,8 +77,10 @@ is_df = charger_is_data()
 # 📌 **Supprimer les colonnes inutiles**
 colonnes_filtrees = [col for col in is_df.columns if col not in ["Mois Max", "Unnamed: 5", "Unnamed: 6"]]
 
-# 🌟 **Interface avec Mise en Page en Deux Colonnes**
-col1, col2 = st.columns(2)
+# 📌 **Mise en page en deux colonnes avec espacement**
+col1, col2 = st.columns([1, 0.1])  # La colonne 2 est plus étroite pour l'espacement
+st.markdown("<br>", unsafe_allow_html=True)
+
 
 # 🏦 **Colonne 1 : Calcul du Salaire Net**
 with col1:

@@ -78,7 +78,7 @@ is_df = charger_is_data()
 colonnes_filtrees = [col for col in is_df.columns if col not in ["Mois Max", "Unnamed: 5", "Unnamed: 6"]]
 
 # 📌 **Mise en page en deux colonnes avec espacement**
-col1, col2 = st.columns([1, 0.1])  # La colonne 2 est plus étroite pour l'espacement
+col1, col2 = st.columns([1, 0.8])  # La colonne 2 est plus étroite pour l'espacement
 st.markdown("<br>", unsafe_allow_html=True)
 
 

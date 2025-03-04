@@ -122,8 +122,8 @@ with col2:
         if salaire_brut_annuel > 0:
             salaire_brut_mensuel = salaire_brut_annuel / 12
             revenus_mensuels = tjm_client * jours_travailles
-            tjm_minimum = (salaire_brut_mensuel / (1 - (marge_minimale / 100))) / jours_travailles  # Ajustement de la marge
-            marge_actuelle = ((revenus_mensuels - salaire_brut_mensuel) / revenus_mensuels) * 100
+            tjm_minimum = (salaire_brut_mensuel*1.14 / (1 - (marge_minimale / 100))) / jours_travailles  # Ajustement de la marge
+            marge_actuelle = ((revenus_mensuels - salaire_brut_mensuel*1.14) / revenus_mensuels) * 100
 
             # **Affichage des résultats**
             st.write(f"### 📉 Marge Actuelle : {marge_actuelle:.2f} %")

@@ -1,11 +1,14 @@
 import streamlit as st
 import pandas as pd
+import requests
+from io import BytesIO
 
-# 📌 URL du fichier IS.xlsx sur GitHub
+# 📌 URL du fichier IS.xlsx sur GitHub (Raw)
 GITHUB_URL_IS = "https://raw.githubusercontent.com/Djoiusis/TAT-Salary/main/IS.xlsx"
 
-# 📌 URL du logo (Assurez-vous que c'est bien l'URL brute de votre logo)
+# 📌 URL du logo (Raw)
 GITHUB_LOGO_URL = "https://raw.githubusercontent.com/Djoiusis/TAT-Salary/main/LOGO-Talent-Access-Technologies-removebg.png"
+
 
 # 📌 Charger les données Excel depuis GitHub
 @st.cache_data

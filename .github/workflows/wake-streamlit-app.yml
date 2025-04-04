@@ -31,4 +31,4 @@ jobs:
       - name: Wake Streamlit App
         run: python wake_streamlit.py
         env:
-          STREAMLIT_APP_URL: ${{ secrets.STREAMLIT_APP_URL }}
+          STREAMLIT_APP_URL: https://tat-margin.streamlit.app/

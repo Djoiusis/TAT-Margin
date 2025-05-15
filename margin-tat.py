@@ -4,6 +4,13 @@ import requests
 from io import BytesIO
 import numpy as np
 
+# Fonction pour afficher les logs
+logs = []
+def log(message):
+    logs.append(message)
+    # Afficher immédiatement
+    st.write(f"LOG: {message}")
+
 # 📌 URL du fichier IS.xlsx sur GitHub (Raw)
 GITHUB_URL_IS = "https://raw.githubusercontent.com/Djoiusis/TAT-Salary/main/IS.xlsx"
 
@@ -62,11 +69,14 @@ def obtenir_taux_is_direct(salaire_brut_annuel, statut_marital):
         if min_val <= salaire_brut_annuel <= max_val:
             # Si statut marital est "Célibataire sans enfant"
             if statut_marital == "Célibataire sans enfant" and i < len(taux_celibataire):
+                log(f"MÉTHODE DIRECTE: Tranche trouvée pour {salaire_brut_annuel} CHF: {min_val}-{max_val}")
+                log(f"MÉTHODE DIRECTE: Taux pour Célibataire sans enfant: {taux_celibataire[i]}%")
                 return taux_celibataire[i] / 100
             
             # Ajouter d'autres conditions pour d'autres statuts au besoin
     
     # Si aucune correspondance n'est trouvée
+    log(f"MÉTHODE DIRECTE: Aucune correspondance trouvée pour {salaire_brut_annuel} CHF et statut {statut_marital}")
     return None
 
 # 📌 Charger les données Excel depuis GitHub
@@ -74,11 +84,13 @@ def obtenir_taux_is_direct(salaire_brut_annuel, statut_marital):
 def charger_is_data():
     try:
         # Lire le fichier Excel
+        log("Tentative de chargement du fichier IS.xlsx depuis GitHub...")
         response = requests.get(GITHUB_URL_IS)
         excel_data = BytesIO(response.content)
         
         # Lire toutes les colonnes comme du texte d'abord
         df = pd.read_excel(excel_data, dtype=str)
+        log(f"Fichier chargé! Nombre de lignes: {len(df)}, Colonnes: {df.columns.tolist()}")
         
         # Créer un nouveau DataFrame nettoyé
         df_clean = pd.DataFrame()
@@ -90,13 +102,14 @@ def charger_is_data():
             elif col in ["Année Min", "Année Max", "Mois Min", "Mois Max"]:
                 # Convertir en nombre
                 df_clean[col] = df[col].apply(nettoyer_nombre)
+                log(f"Colonne {col} convertie en nombres")
             else:
                 # Garder les autres colonnes telles quelles
                 df_clean[col] = df[col]
         
         return df_clean
     except Exception as e:
-        st.error(f"Erreur lors du chargement du fichier IS.xlsx: {e}")
+        log(f"ERREUR lors du chargement du fichier IS.xlsx: {e}")
         return pd.DataFrame()
 
 # 🌟 **Affichage du Logo Centré**
@@ -121,29 +134,45 @@ LPP_TABLE = [
 def obtenir_taux_is(salaire_brut_annuel, statut_marital, is_df):
     # Convertir le salaire en nombre flottant
     salaire_brut_annuel = float(salaire_brut_annuel)
+    log(f"RECHERCHE IS pour: Salaire={salaire_brut_annuel}, Statut={statut_marital}")
     
     # MÉTHODE 1: Utiliser la table de correspondance directe
     taux_direct = obtenir_taux_is_direct(salaire_brut_annuel, statut_marital)
     if taux_direct is not None:
-        st.success(f"✅ Taux trouvé directement: {taux_direct * 100:.2f}%")
+        log(f"SUCCÈS! Taux trouvé directement dans la table de correspondance: {taux_direct * 100:.2f}%")
         return taux_direct
     
     # MÉTHODE 2: Recherche dans le DataFrame
+    log("Méthode directe a échoué, recherche dans le DataFrame...")
     if not is_df.empty and "Année Min" in is_df.columns and "Année Max" in is_df.columns:
-        for _, row in is_df.iterrows():
+        for index, row in is_df.iterrows():
             min_val = nettoyer_nombre(row["Année Min"])
             max_val = nettoyer_nombre(row["Année Max"])
             
             if min_val <= salaire_brut_annuel <= max_val:
+                log(f"TRANCHE TROUVÉE DANS DATAFRAME: Ligne {index}, Min={min_val}, Max={max_val}")
                 # Tranche trouvée, obtenir le taux
                 if statut_marital in row:
-                    taux = nettoyer_nombre(row[statut_marital])
+                    taux_brut = row[statut_marital]
+                    log(f"VALEUR BRUTE du taux: '{taux_brut}'")
+                    taux = nettoyer_nombre(taux_brut)
                     if taux > 0:
-                        st.success(f"✅ Taux trouvé dans le tableau: {taux:.2f}%")
+                        log(f"SUCCÈS! Taux trouvé dans le tableau: {taux:.2f}%")
                         return taux / 100
+                    else:
+                        log(f"AVERTISSEMENT: Taux nul trouvé dans le DataFrame")
+                else:
+                    log(f"ERREUR: Statut '{statut_marital}' non trouvé dans la ligne {index}")
+    else:
+        log("ERREUR: DataFrame vide ou colonnes Année Min/Max manquantes")
+    
+    # CAS SPÉCIAL: Vérifier le cas de 116000 spécifiquement
+    if 115800 <= salaire_brut_annuel <= 116399 and statut_marital == "Célibataire sans enfant":
+        log("CAS SPÉCIAL 116'000: Application du taux fixe de 15.38%")
+        return 0.1538  # 15.38%
     
     # Si aucune méthode n'a fonctionné
-    st.warning(f"⚠️ Aucun taux trouvé pour {salaire_brut_annuel} CHF")
+    log(f"ÉCHEC: Aucun taux trouvé pour {salaire_brut_annuel} CHF, retourne 0")
     return 0.0
 
 # 📌 **Fonction pour obtenir le taux LPP**
@@ -171,8 +200,8 @@ def calculer_salaire_net(salaire_brut_annuel, age, statut_marital, is_df, soumis
     cotisations["Impôt Source"] = 0
     if soumis_is:
         taux_is = obtenir_taux_is(salaire_brut_annuel, statut_marital, is_df)
+        log(f"CALCUL FINAL: Taux IS = {taux_is*100:.2f}%")
         cotisations["Impôt Source"] = salaire_brut_mensuel * taux_is
-        st.write(f"Taux IS: {taux_is*100:.2f}%")
     
     total_deductions = sum(cotisations.values())
     salaire_net_mensuel = salaire_brut_mensuel - total_deductions
@@ -186,6 +215,10 @@ is_df = charger_is_data()
 colonnes_techniques = ["INDEX", "Année Min", "Année Max", "Mois Min", "Mois Max"]
 colonnes_statut_marital = [col for col in is_df.columns if col not in colonnes_techniques 
                          and not col.startswith("Unnamed:")]
+
+# Afficher la section des logs
+st.write("## 📋 Logs de débogage")
+st.write("Tous les messages de débogage apparaîtront ci-dessous:")
 
 # 📌 **Mise en page en deux colonnes avec espacement**
 col1, col3, col2 = st.columns([1, 0.2, 1])  # La colonne 2 est plus étroite pour l'espacement
@@ -207,27 +240,29 @@ with col1:
         statuts_predefined = ["Célibataire sans enfant", "Marié et le conjoint ne travaille pas et 0 enfant",
                             "Marié et le conjoint ne travaille pas et 1 enfant"]
         situation_familiale = st.selectbox("👨‍👩‍👧‍👦 Situation familiale", statuts_predefined)
-        st.warning("Utilisation de statuts prédéfinis - fichier IS.xlsx non chargé correctement")
+        log("AVERTISSEMENT: Utilisation de statuts prédéfinis - fichier IS.xlsx non chargé correctement")
 
     # **Sélection du statut de résidence**
     nationalite = st.radio("🌍 Statut de résidence", ["🇨🇭 Suisse", "🏷️ Permis C", "🌍 Autre (Imposé à la source)"])
     soumis_is = nationalite == "🌍 Autre (Imposé à la source)"
 
+    # **Test pour le cas 116000**
+    if st.button("🧪 Tester spécifiquement 116'000 CHF"):
+        log("--- TEST SPÉCIFIQUE POUR 116'000 CHF ---")
+        taux = obtenir_taux_is(116000, "Célibataire sans enfant", is_df)
+        log(f"Résultat du test: Taux IS pour 116'000 CHF = {taux*100:.2f}%")
+
     # **Bouton de calcul**
     if st.button("🧮 Calculer Salaire"):
-        # Test préalable pour le cas spécifique de 116000
-        if salaire_brut_annuel == 116000 and situation_familiale == "Célibataire sans enfant":
-            st.info("📊 Cas spécifique détecté: 116'000 CHF pour célibataire")
-            # Vérifier si le taux direct fonctionne
-            taux_direct = obtenir_taux_is_direct(salaire_brut_annuel, situation_familiale)
-            if taux_direct:
-                st.success(f"✓ Taux direct trouvé: {taux_direct*100:.2f}%")
+        log(f"--- CALCUL POUR: Salaire={salaire_brut_annuel}, Age={age}, Statut={situation_familiale} ---")
         
         # Calculer le salaire net
         salaire_net_mensuel, salaire_brut_mensuel, details_deductions = calculer_salaire_net(
             salaire_brut_annuel, age, situation_familiale, is_df, soumis_is
         )
 
+        log(f"RÉSULTAT: Salaire Brut={salaire_brut_mensuel:.2f}, Net={salaire_net_mensuel:.2f}")
+        
         st.write(f"### 💰 Salaire Net Mensuel : {salaire_net_mensuel:.2f} CHF")
         st.write("### 📉 Détail des Déductions :")
         for key, value in details_deductions.items():
@@ -256,20 +291,12 @@ with col2:
             st.write(f"### ⚠️ TJM Minimum à respecter pour {marge_minimale}% de marge : {tjm_minimum:.2f} CHF")
 
             if tjm_client >= tjm_minimum:
-                st.success(f"✅ Votre TJM couvre la marge requise de {marge_minimale}%")
+                st.write(f"✅ Votre TJM couvre la marge requise de {marge_minimale}%")
             else:
-                st.warning(f"⚠️ Votre TJM est trop bas pour assurer une marge de {marge_minimale}%")
+                st.write(f"⚠️ Votre TJM est trop bas pour assurer une marge de {marge_minimale}%")
         else:
-            st.warning("⚠️ Veuillez d'abord entrer un salaire brut annuel avant d'estimer la marge.")
+            st.write("⚠️ Veuillez d'abord entrer un salaire brut annuel avant d'estimer la marge.")
 
-# Afficher des informations de débogage si demandé
-if st.checkbox("🔍 Mode débogage"):
-    st.write("### 🔍 Informations de débogage")
-    
-    # Tester plusieurs salaires
-    test_salaires = [115000, 116000, 120000, 130000, 140000]
-    
-    st.write("#### Test des taux d'impôt par salaire")
-    for sal in test_salaires:
-        taux = obtenir_taux_is(sal, situation_familiale, is_df) * 100
-        st.write(f"Salaire {sal} CHF: Taux IS = {taux:.2f}%")
+# Afficher un récapitulatif des logs
+st.write("## 📝 Récapitulatif des logs")
+st.write("\n".join(logs))

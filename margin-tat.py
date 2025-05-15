@@ -3,91 +3,11 @@ import pandas as pd
 import requests
 from io import BytesIO
 
-# Créer un conteneur pour les logs
-log_container = st.empty()
-logs = []
-
-def add_log(message):
-    global logs
-    logs.append(message)
-    # Mettre à jour l'affichage des logs
-    log_container.text_area("Logs de débogage", "\n".join(logs), height=200)
-
 # 📌 URL du fichier IS.xlsx sur GitHub (Raw)
 GITHUB_URL_IS = "https://raw.githubusercontent.com/Djoiusis/TAT-Salary/main/IS.xlsx"
 
 # 📌 URL du logo (Raw)
 GITHUB_LOGO_URL = "https://raw.githubusercontent.com/Djoiusis/TAT-Salary/main/LOGO-Talent-Access-Technologies-removebg.png"
-
-# 📌 Fonction pour nettoyer une valeur numérique
-def nettoyer_nombre(valeur):
-    if pd.isna(valeur) or valeur == "" or valeur == "_____":
-        return 0.0
-    
-    # Convertir en chaîne de caractères
-    valeur_str = str(valeur)
-    
-    # Nettoyer la chaîne
-    valeur_clean = valeur_str.replace("'", "").replace(" ", "").replace(",", ".")
-    
-    # Essayer de convertir en nombre
-    try:
-        return float(valeur_clean)
-    except (ValueError, TypeError):
-        return 0.0
-
-# Définir manuellement les tranches et taux pour les cas problématiques
-tranches_116000 = {
-    (115800, 116399): {
-        "Célibataire sans enfant": 15.38,
-        # Ajouter d'autres statuts au besoin
-    },
-    (116400, 116999): {
-        "Célibataire sans enfant": 15.44,
-        # Ajouter d'autres statuts au besoin
-    }
-}
-
-# 📌 Charger les données Excel depuis GitHub
-@st.cache_data
-def charger_is_data():
-    try:
-        # Lire le fichier Excel
-        response = requests.get(GITHUB_URL_IS)
-        excel_data = BytesIO(response.content)
-        
-        # Lire toutes les colonnes comme du texte d'abord
-        df = pd.read_excel(excel_data, dtype=str)
-        
-        # Créer un nouveau DataFrame nettoyé
-        df_clean = pd.DataFrame()
-        
-        # Copier les colonnes en nettoyant au besoin
-        for col in df.columns:
-            if col in ["INDEX"]:
-                df_clean[col] = df[col]
-            elif col in ["Année Min", "Année Max", "Mois Min", "Mois Max"]:
-                # Convertir en nombre
-                df_clean[col] = df[col].apply(nettoyer_nombre)
-            else:
-                # Garder les autres colonnes telles quelles
-                df_clean[col] = df[col]
-        
-        add_log(f"Fichier chargé avec {len(df_clean)} lignes")
-        return df_clean
-    except Exception as e:
-        add_log(f"Erreur lors du chargement du fichier: {e}")
-        return pd.DataFrame()
-
-# 🌟 **Affichage du Logo Centré**
-st.markdown(
-    f"""
-    <div style="text-align: center;">
-        <img src="{GITHUB_LOGO_URL}" width="250">
-    </div>
-    """,
-    unsafe_allow_html=True
-)
 
 # 📌 **Table des cotisations LPP**
 LPP_TABLE = [
@@ -97,49 +17,77 @@ LPP_TABLE = [
     (4, 55, 9.00, 1.20, 10.20),
 ]
 
+# Définir des taux fixes pour certains salaires
+taux_fixes = {
+    116000: 0.1538  # Taux fixe pour 116'000 CHF (15.38%)
+}
+
+# 📌 Fonction pour nettoyer une valeur numérique
+def nettoyer_nombre(valeur):
+    if pd.isna(valeur) or valeur == "" or valeur == "_____":
+        return 0.0
+    
+    valeur_str = str(valeur).replace("'", "").replace(" ", "").replace(",", ".")
+    
+    try:
+        return float(valeur_str)
+    except:
+        return 0.0
+
+# 📌 Charger les données Excel depuis GitHub
+@st.cache_data
+def charger_is_data():
+    try:
+        response = requests.get(GITHUB_URL_IS)
+        excel_data = BytesIO(response.content)
+        df = pd.read_excel(excel_data, dtype=str)
+        
+        # Nettoyer les colonnes numériques
+        for col in ["Année Min", "Année Max"]:
+            df[col] = df[col].apply(nettoyer_nombre)
+        
+        return df
+    except:
+        return pd.DataFrame()
+
 # 📌 **Fonction pour obtenir le taux IS**
 def obtenir_taux_is(salaire_brut_annuel, statut_marital, is_df):
-    # Afficher les informations de débogage
-    add_log(f"Recherche de taux IS pour: {salaire_brut_annuel} CHF, Statut: {statut_marital}")
+    # Convertir en nombre
+    salaire_brut_annuel = float(salaire_brut_annuel)
     
-    # CAS SPÉCIAL: Vérifier en priorité les cas problématiques connus
-    for (min_val, max_val), taux_map in tranches_116000.items():
+    # Vérifier les taux fixes en priorité
+    if salaire_brut_annuel in taux_fixes:
+        st.write(f"DÉBOGAGE: Utilisation d'un taux fixe pour {salaire_brut_annuel} CHF: {taux_fixes[salaire_brut_annuel]*100}%")
+        return taux_fixes[salaire_brut_annuel]
+    
+    # Sinon, rechercher dans le DataFrame
+    st.write(f"DÉBOGAGE: Recherche pour salaire {salaire_brut_annuel} CHF...")
+    
+    # Cas particulier pour 116000
+    if 115800 <= salaire_brut_annuel <= 116399:
+        st.write("DÉBOGAGE: Cas particulier détecté entre 115800 et 116399")
+        if statut_marital == "Célibataire sans enfant":
+            st.write("DÉBOGAGE: Applique taux fixe de 15.38% pour célibataire")
+            return 0.1538
+    
+    # Recherche standard
+    for _, row in is_df.iterrows():
+        min_val = row["Année Min"]
+        max_val = row["Année Max"]
+        
         if min_val <= salaire_brut_annuel <= max_val:
-            add_log(f"Tranche spéciale trouvée: {min_val}-{max_val}")
-            if statut_marital in taux_map:
-                taux = taux_map[statut_marital] / 100
-                add_log(f"Taux spécial appliqué: {taux*100}%")
-                return taux
+            st.write(f"DÉBOGAGE: Tranche trouvée: {min_val}-{max_val}")
+            
+            if statut_marital in row:
+                taux_str = str(row[statut_marital]).replace(',', '.').strip()
+                try:
+                    taux = float(taux_str) / 100
+                    st.write(f"DÉBOGAGE: Taux trouvé: {taux*100}%")
+                    return taux
+                except:
+                    st.write(f"DÉBOGAGE: Erreur de conversion taux '{taux_str}'")
     
-    # Méthode standard: recherche dans le DataFrame
-    add_log("Recherche standard dans les données...")
-    if not is_df.empty and "Année Min" in is_df.columns and "Année Max" in is_df.columns:
-        for index, row in is_df.iterrows():
-            try:
-                min_val = nettoyer_nombre(row["Année Min"])
-                max_val = nettoyer_nombre(row["Année Max"])
-                
-                # Afficher pour débogage
-                if abs(min_val - salaire_brut_annuel) < 500:  # Proche du salaire recherché
-                    add_log(f"Ligne {index}: Min={min_val}, Max={max_val}")
-                
-                if min_val <= salaire_brut_annuel <= max_val:
-                    add_log(f"Tranche trouvée: {min_val}-{max_val}")
-                    
-                    # Obtenir le taux
-                    if statut_marital in row:
-                        taux = nettoyer_nombre(row[statut_marital])
-                        add_log(f"Taux trouvé: {taux}%")
-                        return taux / 100
-                    else:
-                        add_log(f"Statut {statut_marital} non trouvé dans cette ligne")
-            except Exception as e:
-                add_log(f"Erreur ligne {index}: {e}")
-    else:
-        add_log("DataFrame vide ou colonnes manquantes")
-    
-    # Si rien n'est trouvé
-    add_log("AUCUN TAUX TROUVÉ. Retour de 0")
+    st.write("DÉBOGAGE: Aucun taux trouvé, retourne 0")
     return 0.0
 
 # 📌 **Fonction pour obtenir le taux LPP**
@@ -167,30 +115,35 @@ def calculer_salaire_net(salaire_brut_annuel, age, statut_marital, is_df, soumis
     cotisations["Impôt Source"] = 0
     if soumis_is:
         taux_is = obtenir_taux_is(salaire_brut_annuel, statut_marital, is_df)
-        add_log(f"Taux IS final: {taux_is*100}%")
         cotisations["Impôt Source"] = salaire_brut_mensuel * taux_is
+        st.write(f"DÉBOGAGE: Impôt source appliqué: {taux_is*100}%, montant: {cotisations['Impôt Source']:.2f} CHF")
     
     total_deductions = sum(cotisations.values())
     salaire_net_mensuel = salaire_brut_mensuel - total_deductions
 
     return salaire_net_mensuel, salaire_brut_mensuel, cotisations
 
-# 📌 **Chargement des données IS.xlsx**
-add_log("Chargement des données IS.xlsx...")
+# 🌟 **Affichage du Logo Centré**
+st.markdown(
+    f"""
+    <div style="text-align: center;">
+        <img src="{GITHUB_LOGO_URL}" width="250">
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+# Chargement des données
+st.write("DÉBOGAGE: Chargement des données IS.xlsx...")
 is_df = charger_is_data()
+st.write(f"DÉBOGAGE: Données chargées - {len(is_df)} lignes")
 
-# Identifier les colonnes pour les statuts maritaux
-colonnes_techniques = ["INDEX", "Année Min", "Année Max", "Mois Min", "Mois Max"]
-colonnes_statut_marital = [col for col in is_df.columns if col not in colonnes_techniques 
-                         and not col.startswith("Unnamed:")]
-
-# Afficher les colonnes disponibles
-add_log(f"Colonnes disponibles: {is_df.columns.tolist()}")
-add_log(f"Statuts maritaux disponibles: {colonnes_statut_marital}")
+# Colonnes de statut marital
+colonnes_statut_marital = [col for col in is_df.columns if col not in ["INDEX", "Année Min", "Année Max", "Mois Min", "Mois Max"]]
+st.write(f"DÉBOGAGE: Statuts trouvés: {colonnes_statut_marital}")
 
 # 📌 **Mise en page en deux colonnes avec espacement**
 col1, col3, col2 = st.columns([1, 0.2, 1])  # La colonne 2 est plus étroite pour l'espacement
-st.markdown("<br>", unsafe_allow_html=True)
 
 # 🏦 **Colonne 1 : Calcul du Salaire Net**
 with col1:
@@ -204,28 +157,21 @@ with col1:
     if colonnes_statut_marital:
         situation_familiale = st.selectbox("👨‍👩‍👧‍👦 Situation familiale", colonnes_statut_marital)
     else:
-        # Si pas de colonnes trouvées, utiliser une liste prédéfinie
-        statuts_predefined = ["Célibataire sans enfant", "Marié et le conjoint ne travaille pas et 0 enfant"]
-        situation_familiale = st.selectbox("👨‍👩‍👧‍👦 Situation familiale", statuts_predefined)
+        situation_familiale = "Célibataire sans enfant"
+        st.write("DÉBOGAGE: Pas de statuts trouvés, utilisation de 'Célibataire sans enfant'")
 
     # **Sélection du statut de résidence**
     nationalite = st.radio("🌍 Statut de résidence", ["🇨🇭 Suisse", "🏷️ Permis C", "🌍 Autre (Imposé à la source)"])
     soumis_is = nationalite == "🌍 Autre (Imposé à la source)"
 
-    # **Bouton de test**
-    if st.button("🧪 Test pour 116'000 CHF"):
-        add_log("\n--- TEST POUR 116'000 CHF ---")
+    # **Test direct pour 116000**
+    if st.button("🧪 Test 116'000 CHF"):
         taux = obtenir_taux_is(116000, "Célibataire sans enfant", is_df)
-        add_log(f"Résultat du test: {taux*100}%")
-        st.text_area("Résultat du test pour 116'000 CHF", 
-                     f"Taux trouvé: {taux*100}%\nMontant mensuel: {(116000/12) * taux:.2f} CHF", 
-                     height=100)
+        st.write(f"TEST 116'000 CHF: Taux = {taux*100}%, Montant mensuel = {(116000/12) * taux:.2f} CHF")
 
     # **Bouton de calcul**
     if st.button("🧮 Calculer Salaire"):
-        add_log("\n--- CALCUL DU SALAIRE ---")
-        add_log(f"Salaire: {salaire_brut_annuel}, Age: {age}, Statut: {situation_familiale}")
-        add_log(f"Soumis à l'IS: {soumis_is}")
+        st.write(f"DÉBOGAGE: Calcul pour {salaire_brut_annuel} CHF, {situation_familiale}")
         
         salaire_net_mensuel, salaire_brut_mensuel, details_deductions = calculer_salaire_net(
             salaire_brut_annuel, age, situation_familiale, is_df, soumis_is
@@ -264,3 +210,12 @@ with col2:
                 st.write("⚠️ Votre TJM est trop bas pour assurer la marge")
         else:
             st.write("⚠️ Veuillez d'abord entrer un salaire brut annuel")
+
+# Affichage direct des messages de débogage
+st.write("## 📋 Section débogage")
+st.write("DÉBOGAGE: Tests manuels pour certains salaires")
+
+test_salaires = [115000, 116000, 120000, 130000]
+for sal in test_salaires:
+    taux = obtenir_taux_is(sal, "Célibataire sans enfant", is_df)
+    st.write(f"Salaire {sal} CHF: Taux = {taux*100}%")

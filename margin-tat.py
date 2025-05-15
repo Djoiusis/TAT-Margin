@@ -13,7 +13,19 @@ GITHUB_LOGO_URL = "https://raw.githubusercontent.com/Djoiusis/TAT-Salary/main/LO
 # 📌 Charger les données Excel depuis GitHub
 @st.cache_data
 def charger_is_data():
-    return pd.read_excel(GITHUB_URL_IS)
+    # Lire le fichier Excel
+    df = pd.read_excel(GITHUB_URL_IS)
+    
+    # Nettoyer les colonnes "Année Min" et "Année Max" pour s'assurer qu'elles sont numériques
+    for col in ["Année Min", "Année Max"]:
+        if col in df.columns:
+            # Remplacer les apostrophes et autres caractères non numériques
+            df[col] = df[col].astype(str).str.replace("'", "").str.replace(" ", "").astype(float)
+    
+    # Afficher les données pour le débogage
+    st.write("Aperçu des données IS:", df.head())
+    
+    return df
 
 # 🌟 **Affichage du Logo Centré**
 st.markdown(
@@ -35,8 +47,24 @@ LPP_TABLE = [
 
 # 📌 **Fonction pour obtenir le taux IS**
 def obtenir_taux_is(salaire_brut_annuel, statut_marital, is_df):
+    # Débogage: afficher les paramètres
+    st.write(f"Recherche pour: Salaire={salaire_brut_annuel}, Statut={statut_marital}")
+    
+    # Vérifier si le statut marital existe comme colonne
+    if statut_marital not in is_df.columns:
+        st.error(f"Statut marital '{statut_marital}' non trouvé dans les colonnes: {list(is_df.columns)}")
+        return 0.0
+    
+    # Filtrer la tranche salariale correspondante
     tranche = is_df[(is_df["Année Min"] <= salaire_brut_annuel) & (is_df["Année Max"] >= salaire_brut_annuel)]
-    if tranche.empty or statut_marital not in is_df.columns:
+    
+    # Débogage: afficher les tranches trouvées
+    st.write(f"Nombre de tranches trouvées: {len(tranche)}")
+    if not tranche.empty:
+        st.write("Tranches trouvées:", tranche)
+    
+    if tranche.empty:
+        st.warning(f"Aucune tranche trouvée pour le salaire {salaire_brut_annuel}")
         return 0.0
 
     # Nettoyage et conversion du taux
@@ -44,6 +72,7 @@ def obtenir_taux_is(salaire_brut_annuel, statut_marital, is_df):
     try:
         return float(valeur_str) / 100
     except ValueError:
+        st.error(f"Erreur de conversion: valeur '{valeur_str}' non convertible en nombre")
         return 0.0
 
 

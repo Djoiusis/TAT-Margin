@@ -9,23 +9,27 @@ GITHUB_URL_IS = "https://raw.githubusercontent.com/Djoiusis/TAT-Salary/main/IS.x
 # 📌 URL du logo (Raw)
 GITHUB_LOGO_URL = "https://raw.githubusercontent.com/Djoiusis/TAT-Salary/main/LOGO-Talent-Access-Technologies-removebg.png"
 
-
 # 📌 Charger les données Excel depuis GitHub
 @st.cache_data
 def charger_is_data():
-    # Lire le fichier Excel
-    df = pd.read_excel(GITHUB_URL_IS)
-    
-    # Nettoyer les colonnes "Année Min" et "Année Max" pour s'assurer qu'elles sont numériques
-    for col in ["Année Min", "Année Max"]:
-        if col in df.columns:
-            # Remplacer les apostrophes et autres caractères non numériques
-            df[col] = df[col].astype(str).str.replace("'", "").str.replace(" ", "").astype(float)
-    
-    # Afficher les données pour le débogage
-    st.write("Aperçu des données IS:", df.head())
-    
-    return df
+    try:
+        # Lire le fichier Excel
+        response = requests.get(GITHUB_URL_IS)
+        df = pd.read_excel(BytesIO(response.content))
+        
+        # Nettoyer les colonnes "Année Min" et "Année Max" pour s'assurer qu'elles sont numériques
+        for col in ["Année Min", "Année Max"]:
+            if col in df.columns:
+                # Remplacer les apostrophes et autres caractères non numériques
+                df[col] = df[col].astype(str).str.replace("'", "").str.replace(" ", "").astype(float)
+        
+        # Afficher les données pour le débogage
+        st.write("Aperçu des données IS:", df.head(2))
+        
+        return df
+    except Exception as e:
+        st.error(f"Erreur lors du chargement du fichier IS.xlsx: {e}")
+        return pd.DataFrame()
 
 # 🌟 **Affichage du Logo Centré**
 st.markdown(
@@ -47,53 +51,47 @@ LPP_TABLE = [
 
 # 📌 **Fonction pour obtenir le taux IS**
 def obtenir_taux_is(salaire_brut_annuel, statut_marital, is_df):
-    # Débogage: afficher les paramètres
-    st.write(f"Recherche de taux IS pour: Salaire={salaire_brut_annuel}, Statut={statut_marital}")
+    # Convertir le salaire brut annuel en float pour garantir la compatibilité
+    salaire_brut_annuel = float(salaire_brut_annuel)
     
-    # Vérifier si le DataFrame est vide ou si les colonnes nécessaires existent
+    # Vérifier si le DataFrame est valide
     if is_df.empty or "Année Min" not in is_df.columns or "Année Max" not in is_df.columns:
         st.error("Données IS.xlsx invalides ou colonnes manquantes")
         return 0.0
     
-    # Vérifier si le statut marital existe comme colonne
+    # Vérifier si le statut marital existe
     if statut_marital not in is_df.columns:
-        st.error(f"Statut marital '{statut_marital}' non trouvé dans les colonnes: {list(is_df.columns)}")
-        return 0.0
-    
-    # Afficher les tranches disponibles pour débogage
-    st.write("Tranches de salaire disponibles dans IS.xlsx:")
-    st.write(is_df[["Année Min", "Année Max"]].head(10))
-    
-    # Filtrer la tranche salariale correspondante
-    tranche = is_df[(is_df["Année Min"] <= salaire_brut_annuel) & (is_df["Année Max"] >= salaire_brut_annuel)]
-    
-    # Débogage: afficher les tranches trouvées
-    st.write(f"Nombre de tranches trouvées: {len(tranche)}")
-    if not tranche.empty:
-        st.write("Tranche trouvée:", tranche[["Année Min", "Année Max", statut_marital]])
-    else:
-        st.warning(f"⚠️ Aucune tranche trouvée pour le salaire {salaire_brut_annuel} CHF")
-        # Trouver la tranche maximale pour voir si notre salaire est au-dessus
-        max_tranche = is_df["Année Max"].max()
-        min_tranche = is_df["Année Min"].min()
-        if salaire_brut_annuel > max_tranche:
-            st.warning(f"Le salaire est supérieur à la tranche maximale ({max_tranche})")
-        elif salaire_brut_annuel < min_tranche:
-            st.warning(f"Le salaire est inférieur à la tranche minimale ({min_tranche})")
-        return 0.0
-
-    # Nettoyage et conversion du taux
-    try:
-        valeur = tranche[statut_marital].values[0]
-        if pd.isna(valeur) or valeur == "_____":
+        st.error(f"Statut marital '{statut_marital}' non trouvé. Colonnes disponibles: {list(is_df.columns)}")
+        # Rechercher une correspondance partielle
+        correspondances = [col for col in is_df.columns if statut_marital in col]
+        if correspondances:
+            statut_marital = correspondances[0]
+            st.info(f"Utilisation de '{statut_marital}' à la place")
+        else:
             return 0.0
-        
-        valeur_str = str(valeur).replace(',', '.').strip()
-        return float(valeur_str) / 100
-    except (ValueError, IndexError) as e:
-        st.error(f"Erreur lors de la lecture du taux IS: {e}")
+    
+    # Méthode alternative: recherche manuelle de la tranche
+    tranche_trouvee = None
+    for index, row in is_df.iterrows():
+        if float(row["Année Min"]) <= salaire_brut_annuel <= float(row["Année Max"]):
+            tranche_trouvee = row
+            break
+    
+    if tranche_trouvee is not None:
+        # Extraction du taux
+        valeur = tranche_trouvee[statut_marital]
+        try:
+            if pd.isna(valeur) or valeur == "_____" or valeur == 0:
+                return 0.0
+            
+            valeur_str = str(valeur).replace(',', '.').strip()
+            return float(valeur_str) / 100
+        except (ValueError, TypeError) as e:
+            st.error(f"Erreur de conversion du taux '{valeur}': {e}")
+            return 0.0
+    else:
+        st.warning(f"Aucune tranche trouvée pour {salaire_brut_annuel} CHF")
         return 0.0
-
 
 # 📌 **Fonction pour obtenir le taux LPP**
 def obtenir_taux_lpp(age):
@@ -129,13 +127,13 @@ def calculer_salaire_net(salaire_brut_annuel, age, statut_marital, is_df, soumis
 # 📌 **Chargement des données IS.xlsx**
 is_df = charger_is_data()
 
-# 📌 **Supprimer les colonnes inutiles**
-colonnes_filtrees = [col for col in is_df.columns if col not in ["Mois Max", "Unnamed: 5", "Unnamed: 6"]]
+# Identifier les colonnes de statut marital (toutes les colonnes sauf les colonnes techniques)
+colonnes_techniques = ["INDEX", "Année Min", "Année Max", "Mois Min", "Mois Max", "Unnamed: 5", "Unnamed: 6"]
+colonnes_statut_marital = [col for col in is_df.columns if col not in colonnes_techniques]
 
 # 📌 **Mise en page en deux colonnes avec espacement**
 col1, col3, col2 = st.columns([1, 0.2, 1])  # La colonne 2 est plus étroite pour l'espacement
 st.markdown("<br>", unsafe_allow_html=True)
-
 
 # 🏦 **Colonne 1 : Calcul du Salaire Net**
 with col1:
@@ -144,7 +142,9 @@ with col1:
     # **Entrées utilisateur**
     salaire_brut_annuel = st.number_input("💰 Salaire Brut Annuel (CHF)", min_value=0, value=160000)
     age = st.number_input("🎂 Âge", min_value=25, max_value=65, value=35)
-    situation_familiale = st.selectbox("👨‍👩‍👧‍👦 Situation familiale", colonnes_filtrees[4:])
+    
+    # Utiliser les colonnes spécifiques de statut marital
+    situation_familiale = st.selectbox("👨‍👩‍👧‍👦 Situation familiale", colonnes_statut_marital)
 
     # **Sélection du statut de résidence**
     nationalite = st.radio("🌍 Statut de résidence", ["🇨🇭 Suisse", "🏷️ Permis C", "🌍 Autre (Imposé à la source)"])
@@ -152,6 +152,10 @@ with col1:
 
     # **Bouton de calcul**
     if st.button("🧮 Calculer Salaire"):
+        # Afficher les informations pour le débogage
+        if soumis_is:
+            st.write(f"Calcul pour salaire: {salaire_brut_annuel} CHF, Statut: {situation_familiale}")
+        
         salaire_net_mensuel, salaire_brut_mensuel, details_deductions = calculer_salaire_net(
             salaire_brut_annuel, age, situation_familiale, is_df, soumis_is
         )

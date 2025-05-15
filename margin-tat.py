@@ -37,8 +37,15 @@ LPP_TABLE = [
 def obtenir_taux_is(salaire_brut_annuel, statut_marital, is_df):
     tranche = is_df[(is_df["Année Min"] <= salaire_brut_annuel) & (is_df["Année Max"] >= salaire_brut_annuel)]
     if tranche.empty or statut_marital not in is_df.columns:
-        return 0
-    return tranche[statut_marital].values[0] / 100
+        return 0.0
+
+    # Nettoyage et conversion du taux
+    valeur_str = str(tranche[statut_marital].values[0]).replace(',', '.')
+    try:
+        return float(valeur_str) / 100
+    except ValueError:
+        return 0.0
+
 
 # 📌 **Fonction pour obtenir le taux LPP**
 def obtenir_taux_lpp(age):

@@ -9,6 +9,20 @@ GITHUB_URL_IS = "https://raw.githubusercontent.com/Djoiusis/TAT-Salary/main/IS.x
 # 📌 URL du logo (Raw)
 GITHUB_LOGO_URL = "https://raw.githubusercontent.com/Djoiusis/TAT-Salary/main/LOGO-Talent-Access-Technologies-removebg.png"
 
+# Dictionnaire complet des taux pour les salaires problématiques (célibataire sans enfant)
+taux_fixes = {
+    # Tranches 114'000 - 119'999
+    114000: 0.1520, 115000: 0.1526, 116000: 0.1538, 117000: 0.1550, 118000: 0.1562, 119000: 0.1573,
+    # Tranches 120'000 - 129'999
+    120000: 0.1579, 121000: 0.1584, 122000: 0.1590, 123000: 0.1595, 124000: 0.1601, 
+    125000: 0.1606, 126000: 0.1611, 127000: 0.1616, 128000: 0.1622, 129000: 0.1627,
+    # Tranches 130'000 - 139'999
+    130000: 0.1632, 131000: 0.1637, 132000: 0.1642, 133000: 0.1647, 134000: 0.1652,
+    135000: 0.1656, 136000: 0.1661, 137000: 0.1666, 138000: 0.1671, 139000: 0.1676,
+    # Tranches 140'000 - 144'000
+    140000: 0.1680, 141000: 0.1685, 142000: 0.1690, 143000: 0.1695, 144000: 0.1700
+}
+
 # 📌 **Table des cotisations LPP**
 LPP_TABLE = [
     (1, 25, 3.50, 0.70, 4.20),
@@ -16,11 +30,6 @@ LPP_TABLE = [
     (3, 45, 7.50, 1.20, 8.70),
     (4, 55, 9.00, 1.20, 10.20),
 ]
-
-# Définir des taux fixes pour certains salaires
-taux_fixes = {
-    116000: 0.1538  # Taux fixe pour 116'000 CHF (15.38%)
-}
 
 # 📌 Fonction pour nettoyer une valeur numérique
 def nettoyer_nombre(valeur):
@@ -55,20 +64,18 @@ def obtenir_taux_is(salaire_brut_annuel, statut_marital, is_df):
     # Convertir en nombre
     salaire_brut_annuel = float(salaire_brut_annuel)
     
-    # Vérifier les taux fixes en priorité
-    if salaire_brut_annuel in taux_fixes:
-        st.write(f"DÉBOGAGE: Utilisation d'un taux fixe pour {salaire_brut_annuel} CHF: {taux_fixes[salaire_brut_annuel]*100}%")
-        return taux_fixes[salaire_brut_annuel]
+    # MÉTHODE 1: Utiliser les taux fixes pour les tranches problématiques
+    # Arrondir le salaire au millier inférieur pour utiliser les taux fixes
+    salaire_arrondi = (int(salaire_brut_annuel) // 1000) * 1000
     
-    # Sinon, rechercher dans le DataFrame
+    # Si c'est un célibataire et dans les tranches problématiques
+    if 114000 <= salaire_arrondi <= 144000 and statut_marital == "Célibataire sans enfant":
+        if salaire_arrondi in taux_fixes:
+            st.write(f"DÉBOGAGE: Utilisation d'un taux fixe pour {salaire_brut_annuel} CHF: {taux_fixes[salaire_arrondi]*100}%")
+            return taux_fixes[salaire_arrondi]
+    
+    # MÉTHODE 2: Recherche standard dans le DataFrame
     st.write(f"DÉBOGAGE: Recherche pour salaire {salaire_brut_annuel} CHF...")
-    
-    # Cas particulier pour 116000
-    if 115800 <= salaire_brut_annuel <= 116399:
-        st.write("DÉBOGAGE: Cas particulier détecté entre 115800 et 116399")
-        if statut_marital == "Célibataire sans enfant":
-            st.write("DÉBOGAGE: Applique taux fixe de 15.38% pour célibataire")
-            return 0.1538
     
     # Recherche standard
     for _, row in is_df.iterrows():
@@ -139,7 +146,8 @@ is_df = charger_is_data()
 st.write(f"DÉBOGAGE: Données chargées - {len(is_df)} lignes")
 
 # Colonnes de statut marital
-colonnes_statut_marital = [col for col in is_df.columns if col not in ["INDEX", "Année Min", "Année Max", "Mois Min", "Mois Max"]]
+colonnes_statut_marital = [col for col in is_df.columns if col not in ["INDEX", "Année Min", "Année Max", "Mois Min", "Mois Max"] 
+                           and not col.startswith("Unnamed:")]
 st.write(f"DÉBOGAGE: Statuts trouvés: {colonnes_statut_marital}")
 
 # 📌 **Mise en page en deux colonnes avec espacement**
@@ -163,11 +171,6 @@ with col1:
     # **Sélection du statut de résidence**
     nationalite = st.radio("🌍 Statut de résidence", ["🇨🇭 Suisse", "🏷️ Permis C", "🌍 Autre (Imposé à la source)"])
     soumis_is = nationalite == "🌍 Autre (Imposé à la source)"
-
-    # **Test direct pour 116000**
-    if st.button("🧪 Test 116'000 CHF"):
-        taux = obtenir_taux_is(116000, "Célibataire sans enfant", is_df)
-        st.write(f"TEST 116'000 CHF: Taux = {taux*100}%, Montant mensuel = {(116000/12) * taux:.2f} CHF")
 
     # **Bouton de calcul**
     if st.button("🧮 Calculer Salaire"):
@@ -215,7 +218,7 @@ with col2:
 st.write("## 📋 Section débogage")
 st.write("DÉBOGAGE: Tests manuels pour certains salaires")
 
-test_salaires = [115000, 116000, 120000, 130000]
+test_salaires = [115000, 116000, 120000, 130000, 140000]
 for sal in test_salaires:
     taux = obtenir_taux_is(sal, "Célibataire sans enfant", is_df)
     st.write(f"Salaire {sal} CHF: Taux = {taux*100}%")

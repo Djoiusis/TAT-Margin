@@ -48,12 +48,21 @@ LPP_TABLE = [
 # 📌 **Fonction pour obtenir le taux IS**
 def obtenir_taux_is(salaire_brut_annuel, statut_marital, is_df):
     # Débogage: afficher les paramètres
-    st.write(f"Recherche pour: Salaire={salaire_brut_annuel}, Statut={statut_marital}")
+    st.write(f"Recherche de taux IS pour: Salaire={salaire_brut_annuel}, Statut={statut_marital}")
+    
+    # Vérifier si le DataFrame est vide ou si les colonnes nécessaires existent
+    if is_df.empty or "Année Min" not in is_df.columns or "Année Max" not in is_df.columns:
+        st.error("Données IS.xlsx invalides ou colonnes manquantes")
+        return 0.0
     
     # Vérifier si le statut marital existe comme colonne
     if statut_marital not in is_df.columns:
         st.error(f"Statut marital '{statut_marital}' non trouvé dans les colonnes: {list(is_df.columns)}")
         return 0.0
+    
+    # Afficher les tranches disponibles pour débogage
+    st.write("Tranches de salaire disponibles dans IS.xlsx:")
+    st.write(is_df[["Année Min", "Année Max"]].head(10))
     
     # Filtrer la tranche salariale correspondante
     tranche = is_df[(is_df["Année Min"] <= salaire_brut_annuel) & (is_df["Année Max"] >= salaire_brut_annuel)]
@@ -61,18 +70,28 @@ def obtenir_taux_is(salaire_brut_annuel, statut_marital, is_df):
     # Débogage: afficher les tranches trouvées
     st.write(f"Nombre de tranches trouvées: {len(tranche)}")
     if not tranche.empty:
-        st.write("Tranches trouvées:", tranche)
-    
-    if tranche.empty:
-        st.warning(f"Aucune tranche trouvée pour le salaire {salaire_brut_annuel}")
+        st.write("Tranche trouvée:", tranche[["Année Min", "Année Max", statut_marital]])
+    else:
+        st.warning(f"⚠️ Aucune tranche trouvée pour le salaire {salaire_brut_annuel} CHF")
+        # Trouver la tranche maximale pour voir si notre salaire est au-dessus
+        max_tranche = is_df["Année Max"].max()
+        min_tranche = is_df["Année Min"].min()
+        if salaire_brut_annuel > max_tranche:
+            st.warning(f"Le salaire est supérieur à la tranche maximale ({max_tranche})")
+        elif salaire_brut_annuel < min_tranche:
+            st.warning(f"Le salaire est inférieur à la tranche minimale ({min_tranche})")
         return 0.0
 
     # Nettoyage et conversion du taux
-    valeur_str = str(tranche[statut_marital].values[0]).replace(',', '.')
     try:
+        valeur = tranche[statut_marital].values[0]
+        if pd.isna(valeur) or valeur == "_____":
+            return 0.0
+        
+        valeur_str = str(valeur).replace(',', '.').strip()
         return float(valeur_str) / 100
-    except ValueError:
-        st.error(f"Erreur de conversion: valeur '{valeur_str}' non convertible en nombre")
+    except (ValueError, IndexError) as e:
+        st.error(f"Erreur lors de la lecture du taux IS: {e}")
         return 0.0
 
 

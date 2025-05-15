@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 from io import BytesIO
+import numpy as np
 
 # 📌 URL du fichier IS.xlsx sur GitHub (Raw)
 GITHUB_URL_IS = "https://raw.githubusercontent.com/Djoiusis/TAT-Salary/main/IS.xlsx"
@@ -9,38 +10,91 @@ GITHUB_URL_IS = "https://raw.githubusercontent.com/Djoiusis/TAT-Salary/main/IS.x
 # 📌 URL du logo (Raw)
 GITHUB_LOGO_URL = "https://raw.githubusercontent.com/Djoiusis/TAT-Salary/main/LOGO-Talent-Access-Technologies-removebg.png"
 
+# 📌 Fonction pour nettoyer une valeur numérique
+def nettoyer_nombre(valeur):
+    if pd.isna(valeur) or valeur == "" or valeur == "_____":
+        return 0.0
+    
+    # Convertir en chaîne de caractères
+    valeur_str = str(valeur)
+    
+    # Nettoyer la chaîne
+    valeur_clean = valeur_str.replace("'", "").replace(" ", "").replace(",", ".")
+    
+    # Essayer de convertir en nombre
+    try:
+        return float(valeur_clean)
+    except (ValueError, TypeError):
+        return 0.0
+
+# 📌 Table de correspondance directe pour les tranches problématiques
+def obtenir_taux_is_direct(salaire_brut_annuel, statut_marital):
+    # Créer un dictionnaire pour les tranches et les taux par statut marital
+    tranches = [
+        (114000, 114599), (114600, 115199), (115200, 115799), (115800, 116399),
+        (116400, 116999), (117000, 117599), (117600, 118199), (118200, 118799),
+        (118800, 119399), (119400, 119999), (120000, 120599), (120600, 121199),
+        (121200, 121799), (121800, 122399), (122400, 122999), (123000, 123599),
+        (123600, 124199), (124200, 124799), (124800, 125399), (125400, 125999),
+        (126000, 126599), (126600, 127199), (127200, 127799), (127800, 128399),
+        (128400, 128999), (129000, 129599), (129600, 130199), (130200, 130799),
+        (130800, 131399), (131400, 131999), (132000, 132599), (132600, 133199),
+        (133200, 133799), (133800, 134399), (134400, 134999), (135000, 135599),
+        (135600, 136199), (136200, 136799), (136800, 137399), (137400, 137999),
+        (138000, 138599), (138600, 139199), (139200, 139799), (139800, 140399),
+        (140400, 140999), (141000, 141599), (141600, 142199), (142200, 142799),
+        (142800, 143399), (143400, 143999)
+    ]
+    
+    # Valeurs pour "Célibataire sans enfant" (ajouter d'autres statuts au besoin)
+    taux_celibataire = [
+        15.20, 15.26, 15.32, 15.38, 15.44, 15.50, 15.56, 15.62,
+        15.68, 15.73, 15.79, 15.84, 15.90, 15.95, 16.01, 16.06,
+        16.11, 16.16, 16.22, 16.27, 16.32, 16.37, 16.42, 16.47,
+        16.52, 16.56, 16.61, 16.66, 16.71, 16.75, 16.80, 16.85,
+        16.89, 16.94, 16.99, 17.03, 17.07, 17.12, 17.16, 17.22,
+        17.27, 17.32, 17.37, 17.42, 17.47, 17.52, 17.57, 17.61,
+        17.66, 17.71
+    ]
+    
+    # Chercher dans quelle tranche se trouve le salaire
+    for i, (min_val, max_val) in enumerate(tranches):
+        if min_val <= salaire_brut_annuel <= max_val:
+            # Si statut marital est "Célibataire sans enfant"
+            if statut_marital == "Célibataire sans enfant" and i < len(taux_celibataire):
+                return taux_celibataire[i] / 100
+            
+            # Ajouter d'autres conditions pour d'autres statuts au besoin
+    
+    # Si aucune correspondance n'est trouvée
+    return None
+
 # 📌 Charger les données Excel depuis GitHub
 @st.cache_data
 def charger_is_data():
     try:
         # Lire le fichier Excel
         response = requests.get(GITHUB_URL_IS)
-        df = pd.read_excel(BytesIO(response.content))
+        excel_data = BytesIO(response.content)
         
-        # Afficher les info de débogage
-        st.write(f"Colonnes dans IS.xlsx: {df.columns.tolist()}")
+        # Lire toutes les colonnes comme du texte d'abord
+        df = pd.read_excel(excel_data, dtype=str)
         
-        # Nettoyage des colonnes numériques
+        # Créer un nouveau DataFrame nettoyé
+        df_clean = pd.DataFrame()
+        
+        # Copier les colonnes en nettoyant au besoin
         for col in df.columns:
-            if col != "INDEX":  # Exclure les colonnes non numériques
-                # Convertir en string d'abord pour éviter les erreurs
-                df[col] = df[col].astype(str)
-                # Nettoyer les valeurs
-                df[col] = df[col].str.replace("'", "").str.replace(" ", "")
-                df[col] = df[col].str.replace(",", ".")  # Remplacer les virgules par des points
-                
-                # Convertir en numérique quand possible
-                if col in ["Année Min", "Année Max", "Mois Min", "Mois Max"]:
-                    try:
-                        df[col] = pd.to_numeric(df[col], errors='coerce')
-                    except Exception as e:
-                        st.warning(f"Erreur de conversion pour {col}: {e}")
+            if col in ["INDEX"]:
+                df_clean[col] = df[col]
+            elif col in ["Année Min", "Année Max", "Mois Min", "Mois Max"]:
+                # Convertir en nombre
+                df_clean[col] = df[col].apply(nettoyer_nombre)
+            else:
+                # Garder les autres colonnes telles quelles
+                df_clean[col] = df[col]
         
-        # Afficher quelques lignes pour vérification
-        st.write("Exemple de données après nettoyage:")
-        st.write(df.head(2))
-        
-        return df
+        return df_clean
     except Exception as e:
         st.error(f"Erreur lors du chargement du fichier IS.xlsx: {e}")
         return pd.DataFrame()
@@ -63,57 +117,33 @@ LPP_TABLE = [
     (4, 55, 9.00, 1.20, 10.20),
 ]
 
-# 📌 **Fonction pour obtenir le taux IS - Version améliorée**
+# 📌 **Fonction pour obtenir le taux IS - Solution hybride**
 def obtenir_taux_is(salaire_brut_annuel, statut_marital, is_df):
     # Convertir le salaire en nombre flottant
     salaire_brut_annuel = float(salaire_brut_annuel)
     
-    # Afficher les informations de débogage
-    st.write(f"Recherche pour salaire: {salaire_brut_annuel} CHF, Statut: {statut_marital}")
+    # MÉTHODE 1: Utiliser la table de correspondance directe
+    taux_direct = obtenir_taux_is_direct(salaire_brut_annuel, statut_marital)
+    if taux_direct is not None:
+        st.success(f"✅ Taux trouvé directement: {taux_direct * 100:.2f}%")
+        return taux_direct
     
-    # Vérifier si le DataFrame est valide
-    if is_df.empty:
-        st.error("Données IS.xlsx vides ou invalides")
-        return 0.0
-    
-    # Vérifier si le statut marital est dans les colonnes
-    if statut_marital not in is_df.columns:
-        st.error(f"Statut marital '{statut_marital}' non trouvé dans les colonnes: {is_df.columns.tolist()}")
-        return 0.0
-    
-    # Parcourir manuellement chaque ligne pour trouver la tranche appropriée
-    for index, row in is_df.iterrows():
-        try:
-            # Convertir les valeurs de tranche en nombres flottants
-            min_val = float(str(row["Année Min"]).replace("'", "").replace(" ", ""))
-            max_val = float(str(row["Année Max"]).replace("'", "").replace(" ", ""))
+    # MÉTHODE 2: Recherche dans le DataFrame
+    if not is_df.empty and "Année Min" in is_df.columns and "Année Max" in is_df.columns:
+        for _, row in is_df.iterrows():
+            min_val = nettoyer_nombre(row["Année Min"])
+            max_val = nettoyer_nombre(row["Année Max"])
             
-            # Vérifier si le salaire est dans cette tranche
             if min_val <= salaire_brut_annuel <= max_val:
-                st.success(f"✅ Tranche trouvée: {min_val} - {max_val}")
-                
-                # Obtenir et convertir le taux
-                taux = row[statut_marital]
-                taux_str = str(taux).replace(',', '.').strip()
-                
-                # Vérifier si le taux est valide
-                if taux_str == "" or taux_str == "_____" or taux_str == "0":
-                    return 0.0
-                
-                # Convertir en nombre et diviser par 100
-                try:
-                    taux_final = float(taux_str) / 100
-                    st.write(f"Taux appliqué: {taux_str}% ({taux_final:.4f})")
-                    return taux_final
-                except (ValueError, TypeError) as e:
-                    st.error(f"Erreur de conversion du taux '{taux_str}': {e}")
-                    return 0.0
-        except Exception as e:
-            st.warning(f"Erreur lors du traitement de la ligne {index}: {e}")
-            continue
+                # Tranche trouvée, obtenir le taux
+                if statut_marital in row:
+                    taux = nettoyer_nombre(row[statut_marital])
+                    if taux > 0:
+                        st.success(f"✅ Taux trouvé dans le tableau: {taux:.2f}%")
+                        return taux / 100
     
-    # Si aucune tranche n'est trouvée
-    st.warning(f"❌ Aucune tranche trouvée pour le salaire {salaire_brut_annuel} CHF")
+    # Si aucune méthode n'a fonctionné
+    st.warning(f"⚠️ Aucun taux trouvé pour {salaire_brut_annuel} CHF")
     return 0.0
 
 # 📌 **Fonction pour obtenir le taux LPP**
@@ -142,7 +172,7 @@ def calculer_salaire_net(salaire_brut_annuel, age, statut_marital, is_df, soumis
     if soumis_is:
         taux_is = obtenir_taux_is(salaire_brut_annuel, statut_marital, is_df)
         cotisations["Impôt Source"] = salaire_brut_mensuel * taux_is
-        st.write(f"Taux IS appliqué: {taux_is:.4f} ({taux_is*100:.2f}%)")
+        st.write(f"Taux IS: {taux_is*100:.2f}%")
     
     total_deductions = sum(cotisations.values())
     salaire_net_mensuel = salaire_brut_mensuel - total_deductions
@@ -152,7 +182,7 @@ def calculer_salaire_net(salaire_brut_annuel, age, statut_marital, is_df, soumis
 # 📌 **Chargement des données IS.xlsx**
 is_df = charger_is_data()
 
-# Identifier les colonnes pour les statuts maritaux (exclure les colonnes techniques)
+# Identifier les colonnes pour les statuts maritaux
 colonnes_techniques = ["INDEX", "Année Min", "Année Max", "Mois Min", "Mois Max"]
 colonnes_statut_marital = [col for col in is_df.columns if col not in colonnes_techniques 
                          and not col.startswith("Unnamed:")]
@@ -169,33 +199,31 @@ with col1:
     salaire_brut_annuel = st.number_input("💰 Salaire Brut Annuel (CHF)", min_value=0, value=116000)
     age = st.number_input("🎂 Âge", min_value=25, max_value=65, value=35)
     
-    # Utiliser uniquement les colonnes de statut marital si elles sont disponibles
+    # Utiliser uniquement les colonnes de statut marital
     if colonnes_statut_marital:
         situation_familiale = st.selectbox("👨‍👩‍👧‍👦 Situation familiale", colonnes_statut_marital)
     else:
-        st.error("Aucune colonne de statut marital trouvée dans le fichier IS.xlsx")
-        situation_familiale = "Célibataire sans enfant"  # Valeur par défaut
+        # Si pas de colonnes trouvées, utiliser une liste prédéfinie
+        statuts_predefined = ["Célibataire sans enfant", "Marié et le conjoint ne travaille pas et 0 enfant",
+                            "Marié et le conjoint ne travaille pas et 1 enfant"]
+        situation_familiale = st.selectbox("👨‍👩‍👧‍👦 Situation familiale", statuts_predefined)
+        st.warning("Utilisation de statuts prédéfinis - fichier IS.xlsx non chargé correctement")
 
     # **Sélection du statut de résidence**
     nationalite = st.radio("🌍 Statut de résidence", ["🇨🇭 Suisse", "🏷️ Permis C", "🌍 Autre (Imposé à la source)"])
     soumis_is = nationalite == "🌍 Autre (Imposé à la source)"
 
-    # Tester les valeurs problématiques
-    if st.checkbox("🧪 Mode test (afficher les résultats pour différents salaires)"):
-        salaires_test = [115000, 116000, 120000, 125000, 130000, 135000, 140000]
-        for sal in salaires_test:
-            st.write(f"### Test pour {sal} CHF:")
-            for index, row in is_df.iterrows():
-                try:
-                    min_val = float(str(row["Année Min"]).replace("'", "").replace(" ", ""))
-                    max_val = float(str(row["Année Max"]).replace("'", "").replace(" ", ""))
-                    if min_val <= sal <= max_val:
-                        st.write(f"Tranche: {min_val} - {max_val}, Taux: {row[situation_familiale]}")
-                except Exception as e:
-                    pass
-
     # **Bouton de calcul**
     if st.button("🧮 Calculer Salaire"):
+        # Test préalable pour le cas spécifique de 116000
+        if salaire_brut_annuel == 116000 and situation_familiale == "Célibataire sans enfant":
+            st.info("📊 Cas spécifique détecté: 116'000 CHF pour célibataire")
+            # Vérifier si le taux direct fonctionne
+            taux_direct = obtenir_taux_is_direct(salaire_brut_annuel, situation_familiale)
+            if taux_direct:
+                st.success(f"✓ Taux direct trouvé: {taux_direct*100:.2f}%")
+        
+        # Calculer le salaire net
         salaire_net_mensuel, salaire_brut_mensuel, details_deductions = calculer_salaire_net(
             salaire_brut_annuel, age, situation_familiale, is_df, soumis_is
         )
@@ -233,3 +261,15 @@ with col2:
                 st.warning(f"⚠️ Votre TJM est trop bas pour assurer une marge de {marge_minimale}%")
         else:
             st.warning("⚠️ Veuillez d'abord entrer un salaire brut annuel avant d'estimer la marge.")
+
+# Afficher des informations de débogage si demandé
+if st.checkbox("🔍 Mode débogage"):
+    st.write("### 🔍 Informations de débogage")
+    
+    # Tester plusieurs salaires
+    test_salaires = [115000, 116000, 120000, 130000, 140000]
+    
+    st.write("#### Test des taux d'impôt par salaire")
+    for sal in test_salaires:
+        taux = obtenir_taux_is(sal, situation_familiale, is_df) * 100
+        st.write(f"Salaire {sal} CHF: Taux IS = {taux:.2f}%")

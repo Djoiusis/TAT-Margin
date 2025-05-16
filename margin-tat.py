@@ -9,7 +9,7 @@ GITHUB_URL_IS = "https://raw.githubusercontent.com/Djoiusis/TAT-Salary/main/IS.x
 # 📌 URL du logo (Raw)
 GITHUB_LOGO_URL = "https://raw.githubusercontent.com/Djoiusis/TAT-Salary/main/LOGO-Talent-Access-Technologies-removebg.png"
 
-# Dictionnaire complet des taux pour les salaires problématiques (célibataire sans enfant)
+# Dictionnaire des taux fixes pour les salaires problématiques (célibataire sans enfant)
 taux_fixes = {
     # Tranches 114'000 - 119'999
     114000: 0.1520, 115000: 0.1526, 116000: 0.1538, 117000: 0.1550, 118000: 0.1562, 119000: 0.1573,
@@ -71,30 +71,22 @@ def obtenir_taux_is(salaire_brut_annuel, statut_marital, is_df):
     # Si c'est un célibataire et dans les tranches problématiques
     if 114000 <= salaire_arrondi <= 144000 and statut_marital == "Célibataire sans enfant":
         if salaire_arrondi in taux_fixes:
-            st.write(f"DÉBOGAGE: Utilisation d'un taux fixe pour {salaire_brut_annuel} CHF: {taux_fixes[salaire_arrondi]*100}%")
             return taux_fixes[salaire_arrondi]
     
     # MÉTHODE 2: Recherche standard dans le DataFrame
-    st.write(f"DÉBOGAGE: Recherche pour salaire {salaire_brut_annuel} CHF...")
-    
-    # Recherche standard
     for _, row in is_df.iterrows():
         min_val = row["Année Min"]
         max_val = row["Année Max"]
         
         if min_val <= salaire_brut_annuel <= max_val:
-            st.write(f"DÉBOGAGE: Tranche trouvée: {min_val}-{max_val}")
-            
             if statut_marital in row:
                 taux_str = str(row[statut_marital]).replace(',', '.').strip()
                 try:
                     taux = float(taux_str) / 100
-                    st.write(f"DÉBOGAGE: Taux trouvé: {taux*100}%")
                     return taux
                 except:
-                    st.write(f"DÉBOGAGE: Erreur de conversion taux '{taux_str}'")
+                    pass
     
-    st.write("DÉBOGAGE: Aucun taux trouvé, retourne 0")
     return 0.0
 
 # 📌 **Fonction pour obtenir le taux LPP**
@@ -123,7 +115,6 @@ def calculer_salaire_net(salaire_brut_annuel, age, statut_marital, is_df, soumis
     if soumis_is:
         taux_is = obtenir_taux_is(salaire_brut_annuel, statut_marital, is_df)
         cotisations["Impôt Source"] = salaire_brut_mensuel * taux_is
-        st.write(f"DÉBOGAGE: Impôt source appliqué: {taux_is*100}%, montant: {cotisations['Impôt Source']:.2f} CHF")
     
     total_deductions = sum(cotisations.values())
     salaire_net_mensuel = salaire_brut_mensuel - total_deductions
@@ -141,24 +132,23 @@ st.markdown(
 )
 
 # Chargement des données
-st.write("DÉBOGAGE: Chargement des données IS.xlsx...")
 is_df = charger_is_data()
-st.write(f"DÉBOGAGE: Données chargées - {len(is_df)} lignes")
 
 # Colonnes de statut marital
-colonnes_statut_marital = [col for col in is_df.columns if col not in ["INDEX", "Année Min", "Année Max", "Mois Min", "Mois Max"] 
+colonnes_techniques = ["INDEX", "Année Min", "Année Max", "Mois Min", "Mois Max"]
+colonnes_statut_marital = [col for col in is_df.columns if col not in colonnes_techniques 
                            and not col.startswith("Unnamed:")]
-st.write(f"DÉBOGAGE: Statuts trouvés: {colonnes_statut_marital}")
 
 # 📌 **Mise en page en deux colonnes avec espacement**
 col1, col3, col2 = st.columns([1, 0.2, 1])  # La colonne 2 est plus étroite pour l'espacement
+st.markdown("<br>", unsafe_allow_html=True)
 
 # 🏦 **Colonne 1 : Calcul du Salaire Net**
 with col1:
     st.header("💰 Calcul du Salaire Net")
 
     # **Entrées utilisateur**
-    salaire_brut_annuel = st.number_input("💰 Salaire Brut Annuel (CHF)", min_value=0, value=116000)
+    salaire_brut_annuel = st.number_input("💰 Salaire Brut Annuel (CHF)", min_value=0, value=160000)
     age = st.number_input("🎂 Âge", min_value=25, max_value=65, value=35)
     
     # Utiliser uniquement les colonnes de statut marital
@@ -166,7 +156,6 @@ with col1:
         situation_familiale = st.selectbox("👨‍👩‍👧‍👦 Situation familiale", colonnes_statut_marital)
     else:
         situation_familiale = "Célibataire sans enfant"
-        st.write("DÉBOGAGE: Pas de statuts trouvés, utilisation de 'Célibataire sans enfant'")
 
     # **Sélection du statut de résidence**
     nationalite = st.radio("🌍 Statut de résidence", ["🇨🇭 Suisse", "🏷️ Permis C", "🌍 Autre (Imposé à la source)"])
@@ -174,8 +163,6 @@ with col1:
 
     # **Bouton de calcul**
     if st.button("🧮 Calculer Salaire"):
-        st.write(f"DÉBOGAGE: Calcul pour {salaire_brut_annuel} CHF, {situation_familiale}")
-        
         salaire_net_mensuel, salaire_brut_mensuel, details_deductions = calculer_salaire_net(
             salaire_brut_annuel, age, situation_familiale, is_df, soumis_is
         )
@@ -208,17 +195,8 @@ with col2:
             st.write(f"### ⚠️ TJM Minimum à respecter pour {marge_minimale}% de marge : {tjm_minimum:.2f} CHF")
 
             if tjm_client >= tjm_minimum:
-                st.write("✅ Votre TJM couvre la marge requise")
+                st.success(f"✅ Votre TJM couvre la marge requise de {marge_minimale}%")
             else:
-                st.write("⚠️ Votre TJM est trop bas pour assurer la marge")
+                st.warning(f"⚠️ Votre TJM est trop bas pour assurer une marge de {marge_minimale}%")
         else:
-            st.write("⚠️ Veuillez d'abord entrer un salaire brut annuel")
-
-# Affichage direct des messages de débogage
-st.write("## 📋 Section débogage")
-st.write("DÉBOGAGE: Tests manuels pour certains salaires")
-
-test_salaires = [115000, 116000, 120000, 130000, 140000]
-for sal in test_salaires:
-    taux = obtenir_taux_is(sal, "Célibataire sans enfant", is_df)
-    st.write(f"Salaire {sal} CHF: Taux = {taux*100}%")
+            st.warning("⚠️ Veuillez d'abord entrer un salaire brut annuel avant d'estimer la marge.")
